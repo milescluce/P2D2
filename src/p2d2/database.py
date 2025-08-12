@@ -98,12 +98,14 @@ class TableProxy:
         self.name = name
         self.signature = signature
 
-    def create(self, **kwargs):
-        self.df = self.db.create(self.df, signature=self.signature, **kwargs)
+    def create(self, signature = None, **kwargs):
+        signature = signature or self.signature
+        self.df = self.db.create(self.df, signature=signature, **kwargs)
         return self
 
-    def update(self, updates: dict, **conditions):
-        self.df = self.db.update(self.df, updates, signature=self.signature, **conditions)
+    def update(self, updates: dict, signature = None, **conditions):
+        signature = signature or self.signature
+        self.df = self.db.update(self.df, updates, signature=signature, **conditions)
         return self
 
     def delete(self, **conditions):
