@@ -522,7 +522,6 @@ class Admin(APIRouter):
                         'type': input_type
                     })
 
-                log.error(header_data)
                 template_data = {
                     'table_name': table,
                     'row_index': index,

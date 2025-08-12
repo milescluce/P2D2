@@ -5,7 +5,7 @@ from datetime import date, datetime
 from functools import cached_property
 from pathlib import Path
 from types import SimpleNamespace, MethodType
-from typing import Type, Any, List, Dict
+from typing import Type, Any, List, Dict, Generator
 
 import pandas as pd
 from fastj2 import FastJ2
@@ -296,7 +296,7 @@ class Database:
                 log.debug(f"{self}: Wrote {table_name} to database")
 
     @contextmanager
-    def table(self, table: str | DataFrame | Any, signature: str = "system"):
+    def table(self, table: str | DataFrame | Any, signature: str = "system") -> Generator[TableProxy]:
         if isinstance(table, str):
             table_name = table
             if table in self.tables.keys():

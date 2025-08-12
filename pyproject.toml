@@ -1,6 +1,6 @@
 [project]
-name = "pd2d2"
-version = "0.1.0"
+name = "p2d2"
+version = "0.1.101"
 description = "Pickled Parquetted Dataframed Database"
 authors = [
     {name = "Miles Copeland Luce"}
@@ -12,11 +12,12 @@ dependencies = [
     "loguru (>=0.7.3,<0.8.0)",
     "fastj2 (>=0.1.11,<0.2.0)",
     "toomanyconfigs (>=0.2.82,<0.3.0)",
-    "toomanysessions (>=0.1.9956,<0.2.0)",
+    "toomanysessions (>=0.1.9960,<0.2.0)",
     "starlette (>=0.47.2,<0.48.0)",
     "fastapi (>=0.116.1,<0.117.0)",
     "toomanythreads (>=0.2.4,<0.3.0)",
-    "jinja2 (>=3.1.6,<4.0.0)"
+    "jinja2 (>=3.1.6,<4.0.0)",
+    "fastparquet (>=2024.11.0,<2025.0.0)"
 ]
 
 [tool.poetry]
