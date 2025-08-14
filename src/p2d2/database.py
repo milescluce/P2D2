@@ -12,21 +12,30 @@ from fastj2 import FastJ2
 from loguru import logger as log
 from pandas import DataFrame
 from toomanyconfigs import CWD, TOMLConfig
-from toomanysessions import SessionedServer
-
 
 @property
 def row_count(self):
     return len(self)
 
-def empty_dataframe_from_type(typ: Type, defvals: list = None):
+def empty_dataframe_from_type(typ: Type, defvals: list = None) -> tuple[DataFrame, list]:
     a = typ.__annotations__
-    if not defvals: defvals = ["id", "created_on", "created_by" "modified_on", "modified_by"]
+    if not defvals: defvals = ["id", "created_on", "created_by", "modified_on", "modified_by"]
+
+    # Check for conflicts with default columns
     for col in a:
         for name in defvals:
-            if col == name: raise KeyError(f"Your database class cannot contain default values: {defvals}")
+            if col == name:
+                raise KeyError(f"Your database class cannot contain default values: {defvals}")
+
+    # Create basic DataFrame
     df = pd.DataFrame(columns=a.keys()).astype(a)  # type: ignore
-    return df
+
+    # Set up uniqueness constraints
+    unique_keys = getattr(typ, '_unique_keys', [])
+    if unique_keys:
+        log.debug(f"[p2d2]: Found unique keys for {typ.__name__}: {unique_keys}")
+
+    return df, unique_keys
 
 def get_title(self, index):
     return self.at[index, self.title]
@@ -116,8 +125,9 @@ class TableProxy:
         return self.db.read(self.df, **conditions)
 
 class Database:
-    def __init__(self,
-            db_name=None
+    def __init__(
+            self,
+            db_name=None,
         ):
         try:
             _ = self.tables
@@ -139,25 +149,54 @@ class Database:
         self._path: Path = self._cwd.file_structure[0]
         self._backups: Path = self._cwd.cwd / self._name / backups
         self._default_columns = ["created_at", "created_by" "modified_at", "modified_by"]
+        self._unique_keys = {}
 
         #initialize schema
         for item in self.__annotations__.items():
             a, t = item
             if a.startswith("_"): continue
             if hasattr(self, a): continue
-            df = empty_dataframe_from_type(t, self._default_columns)
+            df, unique_keys = empty_dataframe_from_type(t, self._default_columns)
             df.insert(0, 'created_at', pd.Series(dtype='datetime64[ns]'))
             df.insert(1, 'created_by', pd.Series(dtype='str'))
             df.insert(2, 'modified_at', pd.Series(dtype='datetime64[ns]'))
             df.insert(3, 'modified_by', pd.Series(dtype='str'))
             setattr(self, a, df)
+            self._unique_keys[a] = unique_keys
+
 
         self.fetch()
         _, _ = self._pkl, self._cfg
-        self._api = API(self)
 
     def __repr__(self):
         return f"[{self._name}.db]"
+
+    @cached_property
+    def _api(self):
+        from toomanysessions import SessionedServer
+
+        class API(SessionedServer):
+            def __init__(self, db: Database):
+                super().__init__(
+                    authentication_model="pass",
+                    user_model=None
+                )
+                self.db = db
+                self.templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
+                self.include_router(self.admin_routes)
+                self.include_router(self.json_routes)
+
+            @cached_property
+            def json_routes(self):
+                from .routers import JSON
+                return JSON(self)
+
+            @cached_property
+            def admin_routes(self):
+                from .routers import Admin
+                return Admin(self)
+
+        return API
 
     @cached_property
     def _cfg(self) -> Config:
@@ -268,7 +307,7 @@ class Database:
             diff = old.compare(new)
             if not diff.empty:
                 log.info(f"{self}: Changes in {table_name}:")
-                log.info(diff)
+                print(diff)
                 self._pkl.log_change(table_name, "updated", signature, f"Cell changes: {len(diff)} rows")
         else:
             # Structure changed
@@ -321,6 +360,34 @@ class Database:
             self.commit(signature=signature)
 
     def create(self, table: pd.DataFrame | Any, signature: str = "system", **kwargs):
+        # Find table name by reverse lookup
+        table_name = None
+        for name, df in self.tables.items():
+            if df is table:  # Use 'is' for object identity
+                table_name = name
+                break
+
+        if table_name is None:
+            raise ValueError("Could not find table name for given DataFrame")
+
+        # Get the table class to check for unique keys
+        table_class = None
+        for attr_name, attr_type in self.__annotations__.items():
+            if attr_name == table_name:
+                table_class = attr_type
+                break
+
+        # Check uniqueness constraints and update if duplicate found
+        if table_class:
+            unique_keys = getattr(table_class, '_unique_keys', [])
+            for key in unique_keys:
+                if key in kwargs and key in table.columns:
+                    if kwargs[key] in table[key].values:
+                        # Found duplicate - update existing row instead
+                        log.debug(f"{self}: Duplicate unique key '{key}' found, updating existing row")
+                        return self.update(table, kwargs, signature=signature, **{key: kwargs[key]})
+
+        # No duplicates found - proceed with creation
         # Auto-set timestamps and user for default columns
         now = datetime.now().isoformat()
 
@@ -335,7 +402,7 @@ class Database:
 
         new_row = pd.DataFrame([kwargs])
         updated_df = pd.concat([table, new_row], ignore_index=True)
-        log.debug(f"{self}: Added row with signature={signature}: {kwargs}")
+        log.debug(f"{self}: Added new row with signature={signature}: {kwargs}")
         return updated_df
 
     def read(self, table: pd.DataFrame | Any, **conditions):
@@ -388,24 +455,3 @@ Database.r = Database.read
 Database.u = Database.update
 Database.d = Database.delete
 
-
-class API(SessionedServer):
-    def __init__(self, db: Database):
-        super().__init__(
-            authentication_model="pass",
-            user_model=None
-        )
-        self.db = db
-        self.templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
-        self.include_router(self.admin_routes)
-        self.include_router(self.json_routes)
-
-    @cached_property
-    def json_routes(self):
-        from .routers import JSON
-        return JSON(self)
-
-    @cached_property
-    def admin_routes(self):
-        from .routers import Admin
-        return Admin(self)

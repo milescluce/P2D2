@@ -3,6 +3,7 @@ from p2d2 import Database
 from pandas import DataFrame
 
 class Company:
+    _unique_keys = ["name", "location"]
     name: str
     location: str
     employees: str
@@ -14,6 +15,15 @@ class PhazebreakDB(Database):
 if __name__ == "__main__":
     d = PhazebreakDB()
     company: DataFrame = d.company
-    api = d._api
-    api.thread.start()
+    print(d._unique_keys)
+    data = {
+        "name": "foo",
+        "location": "bar",
+        "employees": "99",
+        "market_cap": 400
+    }
+    with d.table(company) as t:
+        t.create(**data, signature="foobar")
+    # api = d._api
+    # api.thread.start()
     time.sleep(100000)
