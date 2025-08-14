@@ -322,7 +322,7 @@ class Database:
 
     def create(self, table: pd.DataFrame | Any, signature: str = "system", **kwargs):
         # Auto-set timestamps and user for default columns
-        now = pd.Timestamp.now()
+        now = datetime.now().isoformat()
 
         if 'created_at' in table.columns and 'created_at' not in kwargs:
             kwargs['created_at'] = now
