@@ -175,6 +175,7 @@ class Database:
         _ = self._pkl
         #_ = self._cfg
 
+        atexit.register(self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)  # Graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)  # Ctrl+C
         if hasattr(signal, 'SIGHUP'):
