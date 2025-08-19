@@ -15,7 +15,7 @@
         <div class="header-left">
             <h1>Database Dashboard</h1>
             <div class="stats-inline">
-                <span class="stat-item">{{ tables|length }} tables</span>
+                <span class="stat-item">{{ _tables|length }} _tables</span>
                 <span class="stat-separator">•</span>
                 <span class="stat-item">{{ total_rows }} rows</span>
                 <span class="stat-separator">•</span>
@@ -28,7 +28,7 @@
                 <input
                     type="search"
                     class="search-box compact"
-                    placeholder="🔍 Search tables..."
+                    placeholder="🔍 Search _tables..."
                     name="search"
                     onkeyup="filterTableCards()"
                 >
@@ -40,9 +40,9 @@
     </div>
 
     <!-- Table Cards Container -->
-    <div id="tables-container" class="tables-grid">
+    <div id="_tables-container" class="_tables-grid">
         <!-- Each table gets its own card endpoint -->
-        {% for table_name in tables %}
+        {% for table_name in _tables %}
         <div
             hx-get="/{{ table_name }}/card"
             hx-trigger="load"
@@ -56,11 +56,11 @@
         </div>
         {% endfor %}
 
-        {% if not tables %}
+        {% if not _tables %}
         <div class="empty-state">
             <div class="empty-icon">📊</div>
             <h3>No Tables Found</h3>
-            <p>Your database doesn't have any tables yet.</p>
+            <p>Your database doesn't have any _tables yet.</p>
         </div>
         {% endif %}
     </div>

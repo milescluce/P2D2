@@ -22,8 +22,7 @@ if __name__ == "__main__":
         "employees": "99",
         "market_cap": 400
     }
-    with d.table(company) as t:
-        t.create(**data, signature="foobar")
+    d.create("company", **data, signature="foobar")
     # api = d._api
     # api.thread.start()
     time.sleep(100000)

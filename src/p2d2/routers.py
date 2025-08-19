@@ -163,12 +163,12 @@ class Admin(APIRouter):
 
         @self.get("/")
         def dashboard():
-            """Database dashboard showing all tables as cards"""
+            """Database dashboard showing all _tables as cards"""
             tables_info = {}
             total_rows = 0
             total_columns = 0
 
-            for table_name in self.db.tables.keys():
+            for table_name in self.db._tables.keys():
                 df = getattr(self.db, table_name)
                 table_dict = df.analytics
                 total_rows += int(table_dict.row_count)
@@ -215,10 +215,10 @@ class Admin(APIRouter):
             """Table detail page showing row cards"""
             try:
                 # Get the table DataFrame
-                if table not in self.db.tables:
+                if table not in self.db._tables:
                     return Response(f"Table '{table}' not found", status_code=404)
 
-                df = self.db.tables[table]
+                df = self.db._tables[table]
                 if df is None:
                     return Response(f"Table '{table}' is empty", status_code=404)
 
@@ -276,11 +276,11 @@ class Admin(APIRouter):
                 log.debug(f"Searching table: {table}")
 
                 # Get the table DataFrame
-                if table not in self.db.tables:
+                if table not in self.db._tables:
                     log.error(f"Table '{table}' not found")
                     return Response(f"Table '{table}' not found", status_code=404)
 
-                df = self.db.tables[table]
+                df = self.db._tables[table]
                 if df is None:
                     log.warning(f"Table '{table}' is empty")
                     return HTMLResponse('<div class="empty-state"><div class="empty-icon">📄</div><h3>No Rows Found</h3><p>This table is empty.</p></div>')
@@ -396,7 +396,7 @@ class Admin(APIRouter):
             try:
                 df = getattr(self.db, table)
                 if not getattr(df, "get_title", None):
-                    self.db.fetch()
+                    self.db._fetch()
                     df = getattr(self.db, table)
                 if index >= len(df) or index < 0: return Response(f"Row {index} not found in table '{table}'", status_code=404)
 
@@ -459,7 +459,7 @@ class Admin(APIRouter):
             """Row detail page showing individual row data with edit capability"""
             try:
                 # Get the table DataFrame
-                if table not in self.db.tables:
+                if table not in self.db._tables:
                     return Response(f"Table '{table}' not found", status_code=404)
 
                 df = getattr(self.db, table)
