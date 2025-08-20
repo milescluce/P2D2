@@ -197,6 +197,10 @@ class Database:
         log.debug(f"Received signal {signum}, committing database")
         self._commit()
         self._pkl.commit()
+        try:
+            atexit.unregister(self._cleanup_on_exit)
+        except ValueError:
+            pass  # Already unregistered
         exit(0)
 
     def __repr__(self):
