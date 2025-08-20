@@ -3,22 +3,22 @@ import pickle
 import signal
 import sqlite3
 import time
-from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date
 from functools import cached_property
 from pathlib import Path
 from types import SimpleNamespace, MethodType
-from typing import Type, Any, List, Dict, Generator
+from typing import Type
 
 import pandas as pd
-from fastj2 import FastJ2
 from loguru import logger as log
 from pandas import DataFrame
 from toomanyconfigs import CWD, TOMLConfig
 
+
 @property
 def row_count(self):
     return len(self)
+
 
 def empty_dataframe_from_type(typ: Type, defvals: list = None) -> tuple[DataFrame, list]:
     a = typ.__annotations__
@@ -40,14 +40,18 @@ def empty_dataframe_from_type(typ: Type, defvals: list = None) -> tuple[DataFram
 
     return df, unique_keys
 
+
 def get_title(self, index):
     return self.at[index, self.title]
+
 
 def get_subtitle(self, index):
     return self.at[index, self.subtitle]
 
+
 class Config(TOMLConfig):
     password: str = None
+
 
 class PickleChangelog:
     def __init__(self, database: 'Database'):
@@ -80,10 +84,13 @@ class PickleChangelog:
             tbl[change_type] = chg = 0
         tbl[change_type] = chg + 1
 
+
 class TableIndex(dict):
     list: list = []
+
     def __init__(self):
         super().__init__()
+
 
 # class TableProxy:
 #     def __init__(self, df, database, name, signature="system"):
@@ -134,8 +141,8 @@ class TableIndex(dict):
 class Database:
     def __init__(
             self,
-            db_name = None,
-        ):
+            db_name=None,
+    ):
         try:
             _ = self._tables
         except KeyError:
@@ -158,28 +165,33 @@ class Database:
         self._default_columns = ["created_at", "created_by" "modified_at", "modified_by"]
         self._unique_keys = {}
 
-        #initialize schema
+        # initialize schema
         for item in self.__annotations__.items():
             a, t = item
             if a.startswith("_"): continue
             if hasattr(self, a): continue
             df, unique_keys = empty_dataframe_from_type(t, self._default_columns)
-            df.insert(0, 'created_at', pd.Series(dtype='datetime64[ns]'))
+            df.insert(0, 'created_at', pd.Series(dtype='str'))
             df.insert(1, 'created_by', pd.Series(dtype='str'))
-            df.insert(2, 'modified_at', pd.Series(dtype='datetime64[ns]'))
+            df.insert(2, 'modified_at', pd.Series(dtype='str'))
             df.insert(3, 'modified_by', pd.Series(dtype='str'))
             setattr(self, a, df)
             self._unique_keys[a] = unique_keys
 
         self._fetch()
         _ = self._pkl
-        #_ = self._cfg
+        # _ = self._cfg
 
-        atexit.register(self._signal_handler)
+        atexit.register(self._cleanup_on_exit)
         signal.signal(signal.SIGTERM, self._signal_handler)  # Graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)  # Ctrl+C
         if hasattr(signal, 'SIGHUP'):
             signal.signal(signal.SIGHUP, self._signal_handler)  # Terminal close
+
+    def _cleanup_on_exit(self):
+        log.debug("Normal exit detected, committing database")
+        self._commit()
+        self._pkl.commit()
 
     def _signal_handler(self, signum, frame):
         log.debug(f"Received signal {signum}, committing database")
@@ -208,8 +220,8 @@ class Database:
             bytes_value = int(item.memory_usage(deep=False).sum())
             metadata["size_bytes"] = bytes_value
             metadata["size_kilobytes"] = round(bytes_value / 1024, 2)
-            metadata["size_megabytes"] = round(bytes_value / (1024**2), 2)
-            metadata["size_gigabytes"] = round(bytes_value / (1024**3), 6)
+            metadata["size_megabytes"] = round(bytes_value / (1024 ** 2), 2)
+            metadata["size_gigabytes"] = round(bytes_value / (1024 ** 3), 6)
 
         return SimpleNamespace(
             **metadata, as_dict=metadata
@@ -217,7 +229,7 @@ class Database:
 
     @property
     def _tables(self) -> TableIndex:
-        index = TableIndex() #table index is a subclass of dict with a list attribute
+        index = TableIndex()  # table index is a subclass of dict with a list attribute
         for attr_name, attr_type in self.__annotations__.items():
             if attr_name.startswith("_"): continue
             index[attr_name] = getattr(self, attr_name, None)
@@ -270,7 +282,8 @@ class Database:
                 log.warning(f"{self}: No _tables were successfully registered. "
                             f"This probably means the database is empty. Attempting to write...")
                 self._commit()
-            else: log.success(f"{self}: Successfully loaded {successes} _tables from {self._path}")
+            else:
+                log.success(f"{self}: Successfully loaded {successes} _tables from {self._path}")
 
     def _commit(self):
         self._backup()
@@ -372,37 +385,38 @@ class Database:
         except Exception:
             raise
 
-    # @cached_property
-    # def _api(self):
-    #     from toomanysessions import SessionedServer
-    #
-    #     class API(SessionedServer):
-    #         def __init__(self, db: Database):
-    #             super().__init__(
-    #                 authentication_model="pass",
-    #                 user_model=None
-    #             )
-    #             self.db = db
-    #             self.templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
-    #             self.include_router(self.admin_routes)
-    #             self.include_router(self.json_routes)
-    #
-    #         @cached_property
-    #         def json_routes(self):
-    #             from .routers import JSON
-    #             return JSON(self)
-    #
-    #         @cached_property
-    #         def admin_routes(self):
-    #             from .routers import Admin
-    #             return Admin(self)
-    #
-    #     return API
 
 Database.c = Database.create
 Database.r = Database.read
 Database.u = Database.update
 Database.d = Database.delete
+
+# @cached_property
+# def _api(self):
+#     from toomanysessions import SessionedServer
+#
+#     class API(SessionedServer):
+#         def __init__(self, db: Database):
+#             super().__init__(
+#                 authentication_model="pass",
+#                 user_model=None
+#             )
+#             self.db = db
+#             self.templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
+#             self.include_router(self.admin_routes)
+#             self.include_router(self.json_routes)
+#
+#         @cached_property
+#         def json_routes(self):
+#             from .routers import JSON
+#             return JSON(self)
+#
+#         @cached_property
+#         def admin_routes(self):
+#             from .routers import Admin
+#             return Admin(self)
+#
+#     return API
 
 # def _compare(self, table_name: str, old: DataFrame, new: DataFrame, signature: str):
 #     """Compare old vs new DataFrame and log changes"""
