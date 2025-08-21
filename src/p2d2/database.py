@@ -21,23 +21,68 @@ def row_count(self):
 
 
 def empty_dataframe_from_type(typ: Type, defvals: list = None) -> tuple[DataFrame, list]:
+    log.debug(f"Creating empty DataFrame for type: {typ.__name__}")
+
     a = typ.__annotations__
-    if not defvals: defvals = ["id", "created_on", "created_by", "modified_on", "modified_by"]
+    log.debug(f"Found {len(a)} annotated fields: {list(a.keys())}")
+
+    if not defvals:
+        defvals = ["id", "created_on", "created_by", "modified_on", "modified_by"]
+    log.debug(f"Using default columns: {defvals}")
 
     # Check for conflicts with default columns
+    conflicts = []
     for col in a:
         for name in defvals:
             if col == name:
-                raise KeyError(f"Your database class cannot contain default values: {defvals}")
+                conflicts.append(col)
 
-    # Create basic DataFrame
-    df = pd.DataFrame(columns=a.keys()).astype(a)  # type: ignore
+    if conflicts:
+        log.error(f"Column conflicts detected: {conflicts}")
+        raise KeyError(f"Your database class cannot contain default values: {defvals}")
+
+    log.debug("No column conflicts found")
+
+    # Map Python types to pandas dtypes
+    type_mapping = {
+        str: 'object',
+        int: 'int64',
+        float: 'float64',
+        bool: 'bool',
+        dict: 'object',  # Store as JSON strings
+        list: 'object',  # Store as JSON strings
+    }
+
+    log.debug("Mapping Python types to pandas dtypes:")
+
+    # Create DataFrame with mapped types
+    pandas_types = {}
+    for col, python_type in a.items():
+        mapped_type = type_mapping.get(python_type, 'object')
+        pandas_types[col] = mapped_type
+        log.debug(f"  {col}: {python_type.__name__} -> {mapped_type}")
+
+        if python_type not in type_mapping:
+            log.warning(f"Unknown type {python_type.__name__} for column {col}, using 'object'")
+
+    log.debug(f"Final pandas dtypes: {pandas_types}")
+
+    try:
+        df = pd.DataFrame(columns=list(a.keys())).astype(pandas_types)
+        log.success(f"Successfully created DataFrame with shape {df.shape} and columns: {list(df.columns)}")
+    except Exception as e:
+        log.error(f"Failed to create DataFrame with types {pandas_types}: {e}")
+        log.warning("Falling back to default 'object' dtype for all columns")
+        df = pd.DataFrame(columns=list(a.keys()))
 
     # Set up uniqueness constraints
     unique_keys = getattr(typ, '_unique_keys', [])
     if unique_keys:
-        log.debug(f"[p2d2]: Found unique keys for {typ.__name__}: {unique_keys}")
+        log.debug(f"Found unique keys for {typ.__name__}: {unique_keys}")
+    else:
+        log.debug(f"No unique keys specified for {typ.__name__}")
 
+    log.debug(f"Returning DataFrame with {len(df.columns)} columns and {len(unique_keys)} unique keys")
     return df, unique_keys
 
 
@@ -162,7 +207,7 @@ class Database:
         })
         self._path: Path = self._cwd.file_structure[0]
         self._backups: Path = self._cwd.cwd / self._name / backups
-        self._default_columns = ["created_at", "created_by" "modified_at", "modified_by"]
+        self._default_columns = ["created_at", "created_by", "modified_at", "modified_by"]
         self._unique_keys = {}
 
         # initialize schema
@@ -194,13 +239,9 @@ class Database:
         self._pkl.commit()
 
     def _signal_handler(self, signum, frame):
-        log.debug(f"Received signal {signum}, committing database")
-        self._commit()
-        self._pkl.commit()
-        try:
-            atexit.unregister(self._cleanup_on_exit)
-        except ValueError:
-            pass  # Already unregistered
+        log.debug(f"Received signal {signum}, attempting to exit normally")
+        # self._commit()
+        # self._pkl.commit()
         exit(0)
 
     def __repr__(self):
@@ -293,7 +334,12 @@ class Database:
         self._backup()
         with sqlite3.connect(self._path) as conn:
             for table_name, table_df in self._tables.items():
-                table_df.to_sql(table_name, conn, if_exists='replace', index=False)
+                df_copy = table_df.copy()
+                for col in df_copy.columns:
+                    if df_copy[col].dtype == 'datetime64[ns]' or 'datetime' in str(df_copy[col].dtype):
+                        df_copy[col] = pd.to_datetime(df_copy[col]).astype('datetime64[ns]').astype(object)
+
+                df_copy.to_sql(table_name, conn, if_exists='replace', index=False)
                 log.debug(f"{self}: Wrote {table_name} to database")
 
     def create(self, table_name: str, signature: str = "system", **kwargs):
@@ -302,12 +348,19 @@ class Database:
             table = getattr(self, table_name)
             unique_keys = self._unique_keys[table_name]
 
+            log.debug(f"Creating in {table_name}, unique_keys: {unique_keys}")
+            log.debug(f"kwargs: {kwargs}")
+            log.debug(f"table type: {type(table)}")
+
             if unique_keys:
                 for key in unique_keys:
+                    log.debug(f"Checking unique key: {key}")
                     if key in kwargs and not table.empty and kwargs[key] in table[key].values:
+                        log.debug(f"Found existing record with {key}={kwargs[key]}, updating instead")
                         return self.update(table_name, kwargs, signature, **{key: kwargs[key]})
 
             new_idx = len(table)
+            log.debug(f"Adding new row at index: {new_idx}")
 
             # Set audit columns
             table.loc[new_idx, 'created_at'] = pd.Timestamp.now()
@@ -316,12 +369,24 @@ class Database:
             table.loc[new_idx, 'modified_by'] = signature
 
             for col, value in kwargs.items():
+                log.debug(f"Setting {col} = {value} (type: {type(value)})")
+
+                # Serialize complex objects
+                if isinstance(value, (dict, list)):
+                    import json
+                    value = json.dumps(value)
+                    log.debug(f"Serialized {col} to JSON string")
+
                 table.loc[new_idx, col] = value
+
             self._pkl.log_change(signature, table_name, "create")
             elapsed = time.time() - start_time
             log.debug(f"Created row in {table_name}: {kwargs} (took {elapsed:.4f}s)")
             return table
-        except Exception:
+        except Exception as e:
+            log.error(f"Exception in create method: {e}")
+            import traceback
+            log.error(f"Full traceback: {traceback.format_exc()}")
             raise
 
     def read(self, table_name: str, **conditions):
