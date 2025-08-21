@@ -3,7 +3,7 @@ import pickle
 import signal
 import sqlite3
 import time
-from datetime import date
+from datetime import date, datetime
 from functools import cached_property
 from pathlib import Path
 from types import SimpleNamespace, MethodType
@@ -363,9 +363,10 @@ class Database:
             log.debug(f"Adding new row at index: {new_idx}")
 
             # Set audit columns
-            table.loc[new_idx, 'created_at'] = pd.Timestamp.now()
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            table.loc[new_idx, 'created_at'] = now_str
             table.loc[new_idx, 'created_by'] = signature
-            table.loc[new_idx, 'modified_at'] = pd.Timestamp.now()
+            table.loc[new_idx, 'modified_at'] = now_str
             table.loc[new_idx, 'modified_by'] = signature
 
             for col, value in kwargs.items():
@@ -420,7 +421,8 @@ class Database:
                 mask &= (table[col] == value)
 
             # Set audit columns
-            table.loc[mask, 'modified_at'] = pd.Timestamp.now()
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            table.loc[mask, 'modified_at'] = now_str
             table.loc[mask, 'modified_by'] = signature
 
             for col, value in updates.items():
