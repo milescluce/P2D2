@@ -311,7 +311,35 @@ class Database:
                 df_copy.to_sql(table_name, conn, if_exists='replace', index=False)
                 log.debug(f"{self}: Wrote {table_name} to database")
 
-    def create(self, table_name: str, signature: str = "system", **kwargs):
+    def create(self, table_name: str, signature: str = "system", **kwargs) -> pd.DataFrame:
+        """
+        Create a new record in the specified table with automatic NaN handling and type enforcement.
+
+        Enforces unique key constraints and automatically sets audit columns (created_at, created_by,
+        modified_at, modified_by). If a record with the same unique key already exists, performs
+        an update instead of creating a duplicate.
+
+        Args:
+            table_name: Name of the table to insert into (must match class annotation)
+            signature: User/system identifier for audit trail (default: "system")
+            **kwargs: Column values to insert. Complex objects (dict, list) are JSON serialized.
+
+        Returns:
+            pd.DataFrame: The updated table with the new record added
+
+        Raises:
+            Exception: If table doesn't exist or required fields are missing
+
+        Use Cases:
+            # Create a new lead
+            db.create("leads", "user123", name="John Doe", email="john@example.com", active=True)
+
+            # Create with auto-generated ID
+            db.create("leads", signature="sales_team", name="Jane Smith", priority_level="high")
+
+            # Complex data gets serialized automatically
+            db.create("leads", "admin", name="Corp Lead", metadata={"source": "website", "tags": ["vip"]})
+        """
         start_time = time.time()
         try:
             table = self._get_table(table_name)
@@ -359,7 +387,34 @@ class Database:
             log.error(f"Full traceback: {traceback.format_exc()}")
             raise
 
-    def read(self, table_name: str, **conditions):
+    def read(self, table_name: str, **conditions) -> pd.DataFrame:
+        """
+        Read records from the specified table with automatic NaN cleaning and type enforcement.
+
+        Returns all records if no conditions specified, otherwise filters by exact matches
+        on the provided column values. All returned data has NaN values properly handled
+        based on column types (bool columns get False, int/float get 0, str get empty string).
+
+        Args:
+            table_name: Name of the table to read from
+            **conditions: Column=value pairs to filter by (AND logic)
+
+        Returns:
+            pd.DataFrame: Filtered records with NaN values cleaned according to type annotations
+
+        Use Cases:
+            # Get all leads
+            all_leads = db.read("leads")
+
+            # Get leads assigned to specific user
+            user_leads = db.read("leads", assigned_to="john_doe")
+
+            # Get high priority active leads
+            urgent_leads = db.read("leads", priority_level="high", active=True)
+
+            # Find specific lead by email
+            lead = db.read("leads", email="customer@company.com")
+        """
         start_time = time.time()
         try:
             table = self._get_table(table_name)
@@ -380,7 +435,37 @@ class Database:
         except Exception:
             raise
 
-    def update(self, table_name: str, updates: dict, signature: str = "system", **conditions):
+    def update(self, table_name: str, updates: dict, signature: str = "system", **conditions) -> pd.DataFrame:
+        """
+        Update existing records in the specified table with automatic audit trail.
+
+        Updates all records matching the condition criteria. Automatically sets modified_at
+        and modified_by columns for audit tracking. The updated table is saved back to
+        the database instance.
+
+        Args:
+            table_name: Name of the table to update
+            updates: Dictionary of column=new_value pairs to apply
+            signature: User/system identifier for audit trail (default: "system")
+            **conditions: Column=value pairs to identify records to update (AND logic)
+
+        Returns:
+            pd.DataFrame: The updated table with changes applied
+
+        Raises:
+            Exception: If table doesn't exist or update fails
+
+        Use Cases:
+            # Update lead status by ID
+            db.update("leads", {"status": "closed"}, "sales_rep", id="lead_123")
+
+            # Bulk update all leads assigned to user
+            db.update("leads", {"priority_level": "low"}, "manager", assigned_to="former_employee")
+
+            # Update multiple fields at once
+            updates = {"status": "qualified", "probability": 75, "notes": "Ready for proposal"}
+            db.update("leads", updates, "sales_team", email="prospect@company.com")
+        """
         start_time = time.time()
         try:
             table = self._get_table(table_name)
@@ -406,7 +491,37 @@ class Database:
         except Exception:
             raise
 
-    def delete(self, table_name: str, signature: str = "system", **conditions):
+    def delete(self, table_name: str, signature: str = "system", **conditions) -> pd.DataFrame:
+        """
+        Delete records from the specified table based on condition criteria.
+
+        Permanently removes all records matching the specified conditions. The operation
+        is logged for audit purposes. Use with caution as deletions cannot be undone.
+
+        Args:
+            table_name: Name of the table to delete from
+            signature: User/system identifier for audit trail (default: "system")
+            **conditions: Column=value pairs to identify records to delete (AND logic)
+
+        Returns:
+            pd.DataFrame: The updated table with specified records removed
+
+        Raises:
+            Exception: If table doesn't exist or delete operation fails
+
+        Use Cases:
+            # Delete specific lead by ID
+            db.delete("leads", "admin", id="lead_to_remove")
+
+            # Delete all inactive leads older than a certain date
+            db.delete("leads", "cleanup_job", active=False, created_by="old_system")
+
+            # Delete test data
+            db.delete("leads", "developer", name="Test Lead")
+
+            # Bulk delete by criteria
+            db.delete("leads", "data_admin", status="spam", priority_level="low")
+        """
         start_time = time.time()
         try:
             table = self._get_table(table_name)
