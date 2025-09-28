@@ -253,7 +253,7 @@ class Database:
             for table_name in self._tables.keys():
                 try:
                     df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
-                    df = df.fillna(0)
+                    df = df.fillna(None)
                     try:
                         setattr(df, "title", df.columns[4])
                         setattr(df, "get_title", MethodType(get_title, df))
@@ -294,6 +294,7 @@ class Database:
         start_time = time.time()
         try:
             table = getattr(self, table_name)
+            table.fillna(None)
             unique_keys = self._unique_keys[table_name]
 
             log.debug(f"Creating in {table_name}, unique_keys: {unique_keys}")
@@ -341,7 +342,8 @@ class Database:
     def read(self, table_name: str, **conditions):
         start_time = time.time()
         try:
-            table = getattr(self, table_name)
+            table: DataFrame = getattr(self, table_name)
+            table.fillna(None)
 
             if not conditions:
                 elapsed = time.time() - start_time
@@ -363,6 +365,7 @@ class Database:
         start_time = time.time()
         try:
             table = getattr(self, table_name).copy()
+            table.fillna(None)
 
             mask = pd.Series([True] * len(table))
             for col, value in conditions.items():
@@ -389,6 +392,7 @@ class Database:
         start_time = time.time()
         try:
             table = getattr(self, table_name)
+            table.fillna(None)
 
             mask = pd.Series([True] * len(table))
             for col, value in conditions.items():
