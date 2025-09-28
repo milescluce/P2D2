@@ -231,6 +231,28 @@ class Database:
             index.list.append(getattr(self, item))
         return index
 
+    def _get_table(self, table_name: str):
+        """Get a table with NaN values properly handled based on type annotations"""
+        table = getattr(self, table_name)
+        table_class_name = table_name.capitalize()
+        for attr_name, attr_type in self.__annotations__.items():
+            if attr_name == table_name:
+                type_annotations = attr_type.__annotations__
+                break
+        else: raise Exception(f"Unable to find type annotations for {table_class_name}")
+
+        for col, expected_type in type_annotations.items():
+            if col in table.columns:
+                if expected_type == bool:
+                    table[col] = table[col].fillna(False).astype(bool)
+                elif expected_type == int:
+                    table[col] = table[col].fillna(0).astype('int64')
+                elif expected_type == float:
+                    table[col] = table[col].fillna(0.0).astype('float64')
+                elif expected_type == str:
+                    table[col] = table[col].fillna('').astype('object')
+        return table
+
     def _backup(self):
         today = date.today()
         folder = self._backups / str(today)
@@ -253,7 +275,6 @@ class Database:
             for table_name in self._tables.keys():
                 try:
                     df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
-                    df = df.fillna(0) #TODO: Find a better way to handle this
                     try:
                         setattr(df, "title", df.columns[4])
                         setattr(df, "get_title", MethodType(get_title, df))
@@ -293,8 +314,7 @@ class Database:
     def create(self, table_name: str, signature: str = "system", **kwargs):
         start_time = time.time()
         try:
-            table = getattr(self, table_name)
-            table.fillna(0)
+            table = self._get_table(table_name)
             unique_keys = self._unique_keys[table_name]
 
             log.debug(f"Creating in {table_name}, unique_keys: {unique_keys}")
@@ -342,8 +362,7 @@ class Database:
     def read(self, table_name: str, **conditions):
         start_time = time.time()
         try:
-            table: DataFrame = getattr(self, table_name)
-            table.fillna(0)
+            table = self._get_table(table_name)
 
             if not conditions:
                 elapsed = time.time() - start_time
@@ -364,8 +383,7 @@ class Database:
     def update(self, table_name: str, updates: dict, signature: str = "system", **conditions):
         start_time = time.time()
         try:
-            table = getattr(self, table_name).copy()
-            table.fillna(0)
+            table = self._get_table(table_name)
 
             mask = pd.Series([True] * len(table))
             for col, value in conditions.items():
@@ -391,8 +409,7 @@ class Database:
     def delete(self, table_name: str, signature: str = "system", **conditions):
         start_time = time.time()
         try:
-            table = getattr(self, table_name)
-            table.fillna(0)
+            table = self._get_table(table_name)
 
             mask = pd.Series([True] * len(table))
             for col, value in conditions.items():

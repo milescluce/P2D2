@@ -8,14 +8,16 @@ class Company:
     location: str
     employees: str
     market_cap: int
+    nan_debug: bool
 
-class PhazebreakDB(Database):
+class MyDatabase(Database):
     company: Company
 
 if __name__ == "__main__":
-    d = PhazebreakDB()
+    d = MyDatabase()
     company: DataFrame = d.company
     print(d._unique_keys)
+    print(d.read("company", **{"name": "foo"}))
     data = {
         "name": "foo",
         "location": "bar",
