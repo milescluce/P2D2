@@ -136,53 +136,6 @@ class TableIndex(dict):
     def __init__(self):
         super().__init__()
 
-
-# class TableProxy:
-#     def __init__(self, df, database, name, signature="system"):
-#         self.df = df
-#         self.db = database
-#         self.name = name
-#         self.signature = signature
-#
-#     def create(self, signature = None, **kwargs):
-#         signature = signature or self.signature
-#         self.df = self.db.create(self.df, signature=signature, **kwargs)
-#         return self
-#
-#     def update(self, updates: dict, signature = None, **conditions):
-#         signature = signature or self.signature
-#         self.df = self.db.update(self.df, updates, signature=signature, **conditions)
-#         return self
-#
-#     def delete(self, **conditions):
-#         self.df = self.db.delete(self.df, **conditions)
-#         return self
-#
-#     def read(self, **conditions):
-#         return self.db.read(self.df, **conditions)
-
-# @contextmanager
-# def table(self, table: str | DataFrame | Any, signature: str = "system") -> Generator[TableProxy]:
-#     if isinstance(table, str):
-#         table_name = table
-#         if table in self._tables.keys():
-#             table = self._tables[table]
-#     elif isinstance(table, DataFrame):
-#         table_name = None
-#         for name, df in self._tables.items():
-#             if df.equals(table):
-#                 table_name = name
-#                 break
-#         if table_name is None: raise ValueError("DataFrame content doesn't match any database table")
-#     else:
-#         raise TypeError
-#
-#     proxy = TableProxy(table, self, table_name, signature)
-#     try:
-#         yield proxy
-#     finally:
-#         setattr(self, table_name, proxy.df)
-
 class Database:
     def __init__(
             self,
@@ -225,7 +178,6 @@ class Database:
 
         self._fetch()
         _ = self._pkl
-        # _ = self._cfg
 
         atexit.register(self._cleanup_on_exit)
         signal.signal(signal.SIGTERM, self._signal_handler)  # Graceful shutdown
@@ -246,11 +198,6 @@ class Database:
 
     def __repr__(self):
         return f"[{self._name}.db]"
-
-    # @cached_property
-    # def _cfg(self) -> Config:
-    #     cfg = Config.create(self._cwd.file_structure[2])
-    #     return cfg
 
     @cached_property
     def _pkl(self) -> PickleChangelog:
@@ -306,6 +253,7 @@ class Database:
             for table_name in self._tables.keys():
                 try:
                     df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
+                    df = df.fillna(0)
                     try:
                         setattr(df, "title", df.columns[4])
                         setattr(df, "get_title", MethodType(get_title, df))
@@ -461,58 +409,3 @@ Database.c = Database.create
 Database.r = Database.read
 Database.u = Database.update
 Database.d = Database.delete
-
-# @cached_property
-# def _api(self):
-#     from toomanysessions import SessionedServer
-#
-#     class API(SessionedServer):
-#         def __init__(self, db: Database):
-#             super().__init__(
-#                 authentication_model="pass",
-#                 user_model=None
-#             )
-#             self.db = db
-#             self.templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
-#             self.include_router(self.admin_routes)
-#             self.include_router(self.json_routes)
-#
-#         @cached_property
-#         def json_routes(self):
-#             from .routers import JSON
-#             return JSON(self)
-#
-#         @cached_property
-#         def admin_routes(self):
-#             from .routers import Admin
-#             return Admin(self)
-#
-#     return API
-
-# def _compare(self, table_name: str, old: DataFrame, new: DataFrame, signature: str):
-#     """Compare old vs new DataFrame and log changes"""
-#     if old.equals(new):
-#         log.debug(f"{self}: No changes in {table_name}")
-#         self._pkl.log_change(table_name, "no_change", signature)
-#         return
-#
-#     # Changes detected
-#     if old.shape == new.shape and (old.columns == new.columns).all():
-#         # Same structure, show detailed diff
-#         diff = old.compare(new)
-#         if not diff.empty:
-#             log.info(f"{self}: Changes in {table_name}:")
-#             print(diff)
-#             self._pkl.log_change(table_name, "updated", signature, f"Cell changes: {len(diff)} rows")
-#     else:
-#         # Structure changed
-#         row_diff = new.shape[0] - old.shape[0]
-#         if row_diff > 0:
-#             change_type = "rows_added"
-#         elif row_diff < 0:
-#             change_type = "rows_deleted"
-#         else:
-#             change_type = "structure_changed"
-#
-#         log.info(f"{self}: Shape/structure changed in {table_name}: {old.shape} -> {new.shape}")
-#         self._pkl.log_change(table_name, change_type, signature, f"{old.shape} -> {new.shape}")
