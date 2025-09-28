@@ -1,6 +1,6 @@
 [project]
 name = "p2d2"
-version = "0.1.111"
+version = "0.1.113"
 description = "Pickled Parquetted Dataframed Database"
 authors = [
     {name = "Miles Copeland Luce"}
